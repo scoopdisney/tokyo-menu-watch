@@ -1,0 +1,76 @@
+name: Daily Tokyo Disney Resort menu scan
+
+on:
+  schedule:
+    # Every 3 hours, anchored on 00:00 UTC (9am Japan). Oriental Land posts menu changes on Japan mornings.
+    - cron: '0 0,3,6,9,12,15,18,21 * * *'
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Set to 1 to dump one venue page + one item page into the log (for parser fixes)'
+        required: false
+        default: '0'
+  push:
+    paths-ignore:
+      - 'data/**'
+      - 'README.md'
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: tokyo-menu-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Sweep Tokyo Disney Resort menus and diff
+        env:
+          DEBUG_HTML: ${{ github.event.inputs.debug || '0' }}
+        run: node scan.mjs
+
+      - name: Commit snapshot
+        run: |
+          git config user.name "tokyo-menu-watch"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --staged --quiet; then
+            echo "Nothing changed in data/"
+          else
+            git commit -m "Tokyo menu snapshot $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash
+            git push
+          fi
+
+      - name: Post summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f POST_COMMENT ]; then
+            echo "Quiet run and daily summary already posted today — skipping comment."
+            exit 0
+          fi
+          ISSUE=$(gh issue list --label daily-log --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -z "$ISSUE" ]; then
+            gh label create daily-log --color 0e8a16 --description "Tokyo Disney Resort menu price alerts" || true
+            URL=$(gh issue create \
+              --title "Tokyo Disney Resort menu price watch - daily log" \
+              --label daily-log \
+              --body "One summary every day, plus an immediate comment whenever a scan finds a price change, rename, new/removed item, or a fetch failure.")
+            ISSUE=$(basename "$URL")
+          fi
+          {
+            echo "@scoopdisney"
+            echo ""
+            cat summary.md
+          } > comment-body.md
+          gh issue comment "$ISSUE" --body-file comment-body.md
