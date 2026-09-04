@@ -1,0 +1,8 @@
+{
+  "name": "tokyo-menu-watch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tokyo Disney Resort menu price watch — separate from disney-menu-watch (Disneyland) and wdw-menu-watch (Walt Disney World)",
+  "scripts": { "scan": "node scan.mjs", "build": "node build.mjs" }
+}
