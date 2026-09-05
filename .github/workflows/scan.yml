@@ -2,7 +2,6 @@ name: Daily Tokyo Disney Resort menu scan
 
 on:
   schedule:
-    # Every 3 hours, anchored on 00:00 UTC (9am Japan). Oriental Land posts menu changes on Japan mornings.
     - cron: '0 0,3,6,9,12,15,18,21 * * *'
   workflow_dispatch:
     inputs:
@@ -33,16 +32,21 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Ensure data dir so abort still commits
+        run: mkdir -p data && touch data/.keep
+
       - name: Sweep Tokyo Disney Resort menus and diff
         env:
           DEBUG_HTML: ${{ github.event.inputs.debug || '0' }}
+          FETCH_VIA: ${{ secrets.FETCH_VIA }}
+          FETCH_KEY: ${{ secrets.FETCH_KEY }}
         run: node scan.mjs
 
       - name: Commit snapshot
         run: |
           git config user.name "tokyo-menu-watch"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data
+          git add -A -- data 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "Nothing changed in data/"
           else
